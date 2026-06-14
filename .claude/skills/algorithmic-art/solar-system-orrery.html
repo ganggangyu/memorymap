@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Celestial Mechanics — Memory Orrery</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --cream:#fef9f0; --ink:#3c2415; --gold:#c4a97d; --seal:#a0522d; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Poppins',sans-serif; background:var(--cream); color:var(--ink); }
+        .container { display:flex; min-height:100vh; padding:20px; gap:20px; }
+        .sidebar { width:300px; flex-shrink:0; background:rgba(255,255,255,0.95); backdrop-filter:blur(10px); padding:24px; border-radius:12px; box-shadow:0 10px 30px rgba(60,36,21,0.1); overflow-y:auto; }
+        .sidebar h1 { font-family:'Lora',serif; font-size:22px; margin-bottom:4px; }
+        .sidebar .subtitle { color:var(--gold); font-size:13px; margin-bottom:24px; }
+        .control-section { margin-bottom:24px; }
+        .control-section h3 { font-size:14px; font-weight:600; margin-bottom:12px; }
+        .seed-input { width:100%; background:var(--cream); padding:10px; border-radius:8px; font-family:'Courier New',monospace; font-size:14px; margin-bottom:10px; border:1px solid #e0d5b8; text-align:center; }
+        .seed-controls { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+        .control-group { margin-bottom:16px; }
+        .control-group label { display:block; font-size:13px; margin-bottom:6px; }
+        .slider-container { display:flex; align-items:center; gap:10px; }
+        .slider-container input[type="range"] { flex:1; height:4px; background:#e0d5b8; border-radius:2px; }
+        .value-display { font-family:'Courier New',monospace; font-size:11px; color:var(--gold); min-width:50px; text-align:right; }
+        .button { background:var(--seal); color:white; border:none; padding:10px 14px; border-radius:6px; font-size:13px; cursor:pointer; width:100%; }
+        .button:hover { opacity:0.9; }
+        .button.secondary { background:var(--ink); }
+        .button.tertiary { background:var(--gold); color:var(--ink); }
+        .button-row { display:flex; gap:8px; } .button-row .button { flex:1; }
+        .canvas-area { flex:1; display:flex; align-items:center; justify-content:center; }
+        #canvas-container { width:100%; max-width:1000px; border-radius:12px; overflow:hidden; box-shadow:0 20px 40px rgba(60,36,21,0.12); }
+        #canvas-container canvas { display:block; width:100%!important; height:auto!important; }
+    </style>
+</head>
+<body>
+<div class="container">
+<div class="sidebar">
+<h1>Celestial Mechanics</h1>
+<div class="subtitle">Antique Orrery — Memory Solar System</div>
+<div class="control-section">
+<h3>Seed</h3>
+<input type="number" id="seed-input" class="seed-input" value="27182" onchange="updateSeed()">
+<div class="seed-controls">
+<button class="button secondary" onclick="previousSeed()">← Prev</button>
+<button class="button secondary" onclick="nextSeed()">Next →</button>
+</div>
+<button class="button tertiary" onclick="randomSeedAndUpdate()">↻ Random</button>
+</div>
+<div class="control-section">
+<h3>Parameters</h3>
+<div class="control-group"><label>Planets</label><div class="slider-container"><input type="range" id="planets" min="3" max="20" step="1" value="8" oninput="updateParam('planets',this.value)"><span class="value-display" id="planets-value">8</span></div></div>
+<div class="control-group"><label>Ring Detail</label><div class="slider-container"><input type="range" id="ringDetail" min="20" max="120" step="5" value="60" oninput="updateParam('ringDetail',this.value)"><span class="value-display" id="ringDetail-value">60</span></div></div>
+<div class="control-group"><label>Orbit Speed</label><div class="slider-container"><input type="range" id="orbitSpeed" min="1" max="20" step="1" value="5" oninput="updateParam('orbitSpeed',this.value)"><span class="value-display" id="orbitSpeed-value">5</span></div></div>
+<div class="control-group"><label>Sun Glow</label><div class="slider-container"><input type="range" id="sunGlow" min="1" max="8" step="1" value="4" oninput="updateParam('sunGlow',this.value)"><span class="value-display" id="sunGlow-value">4</span></div></div>
+</div>
+<div class="control-section">
+<h3>Actions</h3>
+<div class="button-row"><button class="button" onclick="resetParameters()">Reset</button></div>
+</div>
+</div>
+<div class="canvas-area"><div id="canvas-container"><div class="loading" style="padding:200px;text-align:center;color:var(--gold)">Assembling orrery...</div></div></div>
+</div>
+<script>
+let params = { seed:27182, planets:8, ringDetail:60, orbitSpeed:5, sunGlow:4 };
+let defaultParams;
+let planets = [];
+let stars = [];
+let cx, cy;
+let sunPhase = 0;
+
+function setup() {
+    let c = createCanvas(1000, 1000);
+    c.parent('canvas-container');
+    defaultParams = JSON.parse(JSON.stringify(params));
+    cx = width/2; cy = height/2;
+    document.querySelector('.loading').style.display = 'none';
+    initSystem();
+}
+
+function initSystem() {
+    randomSeed(params.seed);
+    noiseSeed(params.seed);
+    planets = [];
+    for (let i = 0; i < params.planets; i++) {
+        planets.push({
+            orbitRadius: map(i, 0, params.planets-1, 70, min(width, height)*0.42),
+            angle: random(TWO_PI),
+            speed: map(i, 0, params.planets-1, 0.015, 0.003) * params.orbitSpeed * 0.1,
+            size: map(i, 0, params.planets-1, 14, 6) + random(-3, 3),
+            hue: random(['#a0522d','#4a6741','#8b2500','#c4a97d','#3c2415','#7a9a7a','#c67b5c','#5c7a6a','#8b7355','#a89070'])[floor(random(10))],
+            ringChance: random() < 0.25,
+            moonAngle: random(TWO_PI),
+            moonDist: random(18, 30),
+            features: [],
+        });
+        // Generate surface features
+        for (let j = 0; j < 5; j++) planets[i].features.push({ lat: random(-45,45), lng: random(-180,180), size: random(2,5) });
+    }
+    // Background stars
+    stars = [];
+    for (let i = 0; i < 200; i++) stars.push({ x: random(width), y: random(height), size: random(0.5, 2), brightness: random(20, 80) });
+    sunPhase = 0;
+}
+
+function draw() {
+    // Parchment background with subtle noise grain
+    background(254, 249, 240);
+    noStroke();
+    for (let i = 0; i < 300; i++) {
+        let nx = noise(i * 0.1, frameCount * 0.005) * width;
+        let ny = noise(i * 0.1 + 100, frameCount * 0.005) * height;
+        fill(60, 36, 21, 2);
+        ellipse(nx, ny, 2, 2);
+    }
+
+    // Stars
+    for (let s of stars) {
+        fill(60, 36, 21, s.brightness + sin(frameCount*0.02 + s.x)*10);
+        ellipse(s.x, s.y, s.size, s.size);
+    }
+
+    // Title
+    fill(60, 36, 21, 50);
+    textAlign(CENTER);
+    textFont('Lora');
+    textSize(11);
+    text('CELESTIAL MECHANICS · MEMORY ORRERY', cx, 35);
+
+    sunPhase += 0.02;
+
+    // ===== THE SUN (center) =====
+    let sunBaseR = 40;
+    // Outer glow layers
+    for (let g = params.sunGlow; g >= 0; g--) {
+        let gr = sunBaseR + g * 18;
+        let ga = map(g, 0, params.sunGlow, 180, 15) + sin(sunPhase * 3 + g) * 20;
+        fill(196, 169, 125, ga);
+        ellipse(cx, cy, gr * 2, gr * 2);
+    }
+    // Inner bright core
+    fill(250, 245, 232, 220);
+    ellipse(cx, cy, sunBaseR * 1.6, sunBaseR * 1.6);
+    fill(240, 232, 213, 255);
+    ellipse(cx, cy, sunBaseR * 0.9, sunBaseR * 0.9);
+    // Corona rays (subtle)
+    for (let r = 0; r < 12; r++) {
+        let ra = map(r, 0, 12, 0, TWO_PI) + sunPhase * 0.1;
+        let rayLen = sunBaseR * 1.8 + sin(sunPhase * 5 + r) * 15;
+        fill(196, 169, 125, 25);
+        noStroke();
+        arc(cx, cy, rayLen*2, rayLen*2, ra-0.08, ra+0.08);
+    }
+
+    // ===== ORBIT RINGS =====
+    for (let p of planets) {
+        let ink = color(60, 36, 21);
+        ink.setAlpha(18);
+        noFill(); stroke(ink); strokeWeight(0.6);
+        ellipse(cx, cy, p.orbitRadius * 2, p.orbitRadius * 2);
+    }
+
+    // ===== PLANETS =====
+    for (let p of planets) {
+        p.angle += p.speed;
+        let px = cx + cos(p.angle) * p.orbitRadius;
+        let py = cy + sin(p.angle) * p.orbitRadius;
+
+        // Shadow hemisphere (darker side)
+        let shadowAngle = p.angle + PI/2;
+        let sx = px + cos(shadowAngle) * p.size * 0.4;
+        let sy = py + sin(shadowAngle) * p.size * 0.4;
+
+        // Planet body
+        let planetColor = color(p.hue);
+        // Highlight side
+        let highlightX = px - cos(p.angle) * p.size * 0.2;
+        let highlightY = py - sin(p.angle) * p.size * 0.2;
+
+        // Draw planet as layered ellipses for 3D effect
+        noStroke();
+        // Base
+        fill(planetColor);
+        ellipse(px, py, p.size * 2, p.size * 2);
+
+        // Atmosphere rim
+        let rimColor = color(p.hue);
+        rimColor.setAlpha(80);
+        fill(rimColor);
+        ellipse(px, py, p.size * 1.7, p.size * 1.7);
+
+        // Dark crescent (shadow side)
+        fill(30, 20, 10, 100);
+        ellipse(sx, sy, p.size * 1.5, p.size * 1.5);
+
+        // Specular highlight
+        fill(255, 253, 247, 60);
+        ellipse(highlightX, highlightY, p.size * 0.8, p.size * 0.7);
+
+        // Surface features (tiny dots)
+        for (let f of p.features) {
+            let fx = px + cos(p.angle + f.lng * 0.01) * p.size * 0.6;
+            let fy = py + sin(p.angle + f.lng * 0.01) * p.size * 0.4;
+            fill(0, 0, 0, 30);
+            ellipse(fx, fy, f.size, f.size);
+        }
+
+        // Ring system for some planets
+        if (p.ringChance) {
+            noFill();
+            let ringA = p.angle * 0.3;
+            for (let ri = 0; ri < params.ringDetail; ri++) {
+                let rr = p.size * 1.3 + ri * 0.25;
+                let ringColor = color(196, 169, 125);
+                ringColor.setAlpha(map(ri, 0, params.ringDetail, 80, 5));
+                stroke(ringColor);
+                strokeWeight(0.4);
+                ellipse(px, py, rr * 2 * cos(ringA), rr * 1.2);
+            }
+        }
+    }
+
+    // ===== CONJUNCTION GLOWS =====
+    for (let i = 0; i < planets.length; i++) {
+        for (let j = i + 1; j < planets.length; j++) {
+            let p1 = planets[i], p2 = planets[j];
+            let dx = cos(p1.angle) * p1.orbitRadius - cos(p2.angle) * p2.orbitRadius;
+            let dy = sin(p1.angle) * p1.orbitRadius - sin(p2.angle) * p2.orbitRadius;
+            let dist = sqrt(dx*dx + dy*dy);
+            if (dist < 50) {
+                let mx = (cos(p1.angle) * p1.orbitRadius + cos(p2.angle) * p2.orbitRadius) / 2 + cx;
+                let my = (sin(p1.angle) * p1.orbitRadius + sin(p2.angle) * p2.orbitRadius) / 2 + cy;
+                fill(196, 169, 125, map(dist, 0, 50, 60, 0));
+                noStroke();
+                ellipse(mx, my, 20, 20);
+            }
+        }
+    }
+
+    // Bottom info
+    fill(60, 36, 21, 35);
+    textSize(9);
+    text(`${params.planets} planets · seed ${params.seed}`, cx, height - 25);
+}
+
+function updateParam(name, value) {
+    params[name] = parseInt(value);
+    document.getElementById(name + '-value').textContent = value;
+    initSystem();
+}
+function updateSeed() { let v = parseInt(document.getElementById('seed-input').value); if(v>0){params.seed=v;initSystem();} }
+function updateSeedDisplay() { document.getElementById('seed-input').value = params.seed; }
+function previousSeed() { params.seed = max(1,params.seed-1); updateSeedDisplay(); initSystem(); }
+function nextSeed() { params.seed++; updateSeedDisplay(); initSystem(); }
+function randomSeedAndUpdate() { params.seed = floor(random(99999))+1; updateSeedDisplay(); initSystem(); }
+function resetParameters() {
+    params = JSON.parse(JSON.stringify(defaultParams));
+    ['planets','ringDetail','orbitSpeed','sunGlow'].forEach(n => {
+        document.getElementById(n).value = params[n];
+        document.getElementById(n+'-value').textContent = params[n];
+    });
+    updateSeedDisplay(); initSystem();
+}
+window.addEventListener('load', () => updateSeedDisplay());
+</script>
+</body>
+</html>

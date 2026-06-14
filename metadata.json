@@ -1,0 +1,8 @@
+{
+  "name": "map0104",
+  "description": "An interactive map and timeline showcasing the beautiful moments and places of a romantic journey. Click on timeline events or map markers to relive precious memories.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}

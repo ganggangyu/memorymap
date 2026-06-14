@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RomanticJourney</string>
+    <string name="title_activity_main">RomanticJourney</string>
+    <string name="package_name">com.memorymap.app</string>
+    <string name="custom_url_scheme">com.memorymap.app</string>
+</resources>

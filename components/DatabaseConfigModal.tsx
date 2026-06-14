@@ -1,4 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 import { XIcon, UploadIcon, CloudIcon, SearchIcon, TrashIcon, PhotoIcon, CheckIcon, CalendarIcon, PlusIcon, MapPinIcon } from './icons';
 import { MemoryEvent } from '../types';
 import { isR2Configured, saveR2Config, uploadBase64ToR2, listR2Files, deleteFileFromR2 } from '../r2';
@@ -230,17 +232,44 @@ const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({ isOpen, onClo
     }
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
     const data = localStorage.getItem('romantic_journey_local_events');
     if (!data) { alert('没有数据可导出'); return; }
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `memorymap_backup_${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    alert('✅ 数据已导出！');
+
+    const filename = `memorymap_backup_${new Date().toISOString().slice(0, 10)}.json`;
+
+    const isNative = Capacitor.getPlatform() !== 'web';
+    if (isNative) {
+      try {
+        await Filesystem.writeFile({
+          path: `Download/${filename}`,
+          data,
+          directory: Directory.External,
+          recursive: true,
+        });
+        alert(`✅ 已导出到 Downloads/${filename}`);
+      } catch (e) {
+        try {
+          await Filesystem.writeFile({
+            path: filename,
+            data,
+            directory: Directory.External,
+          });
+          alert(`✅ 已导出到/${filename}`);
+        } catch (e2: any) {
+          alert('导出失败: ' + (e2?.message || e2));
+        }
+      }
+    } else {
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('✅ 数据已导出！');
+    }
   };
 
   const storageStats = useMemo(() => {
